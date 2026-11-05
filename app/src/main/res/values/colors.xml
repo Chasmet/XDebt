@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="xd_black">#07090B</color>
+    <color name="xd_panel">#15191D</color>
+    <color name="xd_text">#F2F5F7</color>
+    <color name="xd_muted">#9DA9B4</color>
+    <color name="xd_cyan">#00E3E9</color>
+</resources>

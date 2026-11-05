@@ -1,0 +1,39 @@
+plugins {
+    id 'com.android.application'
+}
+android {
+    namespace 'com.chasmet.xdebt'
+    compileSdk 34
+    defaultConfig {
+        applicationId 'com.chasmet.xdebt'
+        minSdk 21
+        targetSdk 34
+        versionCode (project.findProperty('versionCode') ?: '1').toInteger()
+        versionName (project.findProperty('versionName') ?: '0.1.0').toString()
+    }
+    signingConfigs {
+        release {
+            if (System.getenv('XDEBT_KEYSTORE_PATH')) {
+                storeFile file(System.getenv('XDEBT_KEYSTORE_PATH'))
+                storePassword System.getenv('XDEBT_STORE_PASSWORD')
+                keyAlias System.getenv('XDEBT_KEY_ALIAS')
+                keyPassword System.getenv('XDEBT_KEY_PASSWORD')
+            }
+        }
+    }
+    buildTypes {
+        release {
+            minifyEnabled false
+            if (System.getenv('XDEBT_KEYSTORE_PATH')) {
+                signingConfig signingConfigs.release
+            }
+        }
+    }
+    buildFeatures {
+        buildConfig true
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
