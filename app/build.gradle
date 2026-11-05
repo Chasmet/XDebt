@@ -1,6 +1,8 @@
 plugins {
     id 'com.android.application'
 }
+def xdBuildCode = (providers.gradleProperty('xdBuildCode').orElse('1').get()) as int
+def xdBuildName = providers.gradleProperty('xdBuildName').orElse('0.1.0').get()
 android {
     namespace 'com.chasmet.xdebt'
     compileSdk 34
@@ -8,8 +10,8 @@ android {
         applicationId 'com.chasmet.xdebt'
         minSdk 21
         targetSdk 34
-        versionCode (project.findProperty('versionCode') ?: '1').toInteger()
-        versionName (project.findProperty('versionName') ?: '0.1.0').toString()
+        versionCode xdBuildCode
+        versionName xdBuildName
     }
     signingConfigs {
         release {
