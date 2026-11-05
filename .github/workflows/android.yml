@@ -41,7 +41,7 @@ jobs:
             git push origin HEAD:main
           fi
       - name: Assemble debug APK
-        run: ./gradlew assembleDebug -PversionCode=$((1000 + GITHUB_RUN_NUMBER)) -PversionName=1.0.${GITHUB_RUN_NUMBER}
+        run: ./gradlew assembleDebug -PxdBuildCode=$((1000 + GITHUB_RUN_NUMBER)) -PxdBuildName=1.0.${GITHUB_RUN_NUMBER}
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
@@ -54,7 +54,7 @@ jobs:
           echo "XDEBT_KEYSTORE_PATH=${GITHUB_WORKSPACE}/signing.jks" >> "$GITHUB_ENV"
       - name: Assemble signed APK and Play Store AAB
         if: env.XDEBT_KEYSTORE_B64 != ''
-        run: ./gradlew assembleRelease bundleRelease -PversionCode=$((1000 + GITHUB_RUN_NUMBER)) -PversionName=1.0.${GITHUB_RUN_NUMBER}
+        run: ./gradlew assembleRelease bundleRelease -PxdBuildCode=$((1000 + GITHUB_RUN_NUMBER)) -PxdBuildName=1.0.${GITHUB_RUN_NUMBER}
       - name: Create signed GitHub Release
         if: env.XDEBT_KEYSTORE_B64 != ''
         env:
