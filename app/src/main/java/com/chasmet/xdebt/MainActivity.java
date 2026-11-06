@@ -48,7 +48,11 @@ public class MainActivity extends Activity {
     private final NumberFormat euros = NumberFormat.getCurrencyInstance(Locale.FRANCE);
     private LinearLayout root, body;
     private ApiClient api;
-    private UpdateManager updater;
+    private SkillMajAuto skillMajAuto;
+    private final java.util.concurrent.ExecutorService updateExecutor = java.util.concurrent.Executors.newSingleThreadExecutor();
+    private SkillMajAuto.Release offeredRelease;
+    private TextView updateStatus;
+    private Button updateAction;
     private JSONObject profile;
     private boolean profileOwner;
     private int screenVersion = 0;
@@ -60,12 +64,12 @@ public class MainActivity extends Activity {
         getWindow().setNavigationBarColor(BLACK);
         root = findViewById(R.id.root_container);
         api = new ApiClient(this);
-        updater = new UpdateManager(this);
-        if (android.os.Build.VERSION.SDK_INT >= 33 && !BuildConfig.DEBUG && updater.automaticChecksEnabled() &&
+        skillMajAuto = new SkillMajAuto(this);
+        if (android.os.Build.VERSION.SDK_INT >= 33 && !BuildConfig.DEBUG && skillMajAuto.enabled() &&
                 checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
             requestPermissions(new String[]{android.Manifest.permission.POST_NOTIFICATIONS}, 851);
         }
-        if (updater.automaticChecksEnabled()) updater.check(false);
+        if (skillMajAuto.enabled()) SkillMajAutoWorker.schedule(this);
         if (api.base().isEmpty() || api.token().isEmpty()) showAuth();
         else showCommunity();
     }
@@ -533,36 +537,98 @@ public class MainActivity extends Activity {
         add(body, button("Tester la connexion XDebt au serveur", false, v -> {
             api.call("GET", "/health", null, (response, error) -> {
                 if (error != null) { failure(error); return; }
-                if (response != null && "XDebt".equals(response.optString("service"))) {
+                if (response != null && "XDebt".equals(response.optString("service")))
                     toast("Serveur XDebt actif et accessible.");
-                } else toast("Réponse serveur incorrecte.");
+                else toast("Réponse serveur incorrecte.");
             });
         }), 13);
-        add(body, text("SkillMajAuto · Version installée : " + BuildConfig.VERSION_NAME, 13, MUTED, false), 18);
+
+        add(body, text("SkillMajAuto · Mises à jour intégrées", 19, TEXT, true), 24);
+        add(body, text("Version installée : " + BuildConfig.VERSION_NAME, 13, MUTED, false), 7);
         CheckBox autoUpdates = new CheckBox(this);
-        autoUpdates.setText("SkillMajAuto · Surveillance automatique des mises à jour");
+        autoUpdates.setText("Surveillance automatique (12 heures environ)");
         autoUpdates.setTextColor(TEXT);
-        autoUpdates.setChecked(updater.automaticChecksEnabled());
-        autoUpdates.setOnCheckedChangeListener((b, checked) -> updater.setAutomaticChecksEnabled(checked));
-        add(body, autoUpdates, 9);
-        add(body, button("SkillMajAuto · Vérifier les mises à jour", false, v -> updater.check(true)), 9);
-        add(body, text("Recherche GitHub Releases et contrôle de signature. En version Test, les mises à jour automatiques sont désactivées.", 12, MUTED, false), 8);
+        autoUpdates.setChecked(skillMajAuto.enabled());
+        autoUpdates.setOnCheckedChangeListener((b, checked) -> {
+            skillMajAuto.setEnabled(checked);
+            toast(checked ? "Surveillance SkillMajAuto activée." : "Surveillance désactivée.");
+        });
+        add(body, autoUpdates, 12);
+        updateStatus = text(BuildConfig.DEBUG
+                ? "Mode Test : vérification des mises à jour officielles désactivée pour préserver l'application existante."
+                : "Vérification GitHub Releases, signature et version Android.",
+                13, MUTED, false);
+        add(body, updateStatus, 12);
+        updateAction = button("SkillMajAuto · Vérifier les mises à jour", false, v -> performUpdateAction());
+        add(body, updateAction, 12);
+        if (skillMajAuto.verifiedDownload() != null)
+            updateAction.setText("SkillMajAuto · Installer l'APK vérifié");
+        add(body, text("SkillMajAuto ne désinstalle jamais XDebt et ne supprime aucune donnée. Android demande votre accord pour installer l'APK.", 12, MUTED, false), 9);
         add(body, button("Retour", false, v -> {
             if (api.token().isEmpty()) showAuth(); else showCommunity();
-        }), 9);
+        }), 12);
         if (!api.token().isEmpty()) add(body, button("Se déconnecter", false, v -> {
             api.call("POST", "/logout", new JSONObject(), (r, e) -> {
                 api.clearToken(); showAuth();
             });
         }), 9);
     }
+
+    private void performUpdateAction() {
+        java.io.File ready = skillMajAuto.verifiedDownload();
+        if (ready != null) {
+            try { skillMajAuto.install(ready, this); }
+            catch (Exception e) {
+                new AlertDialog.Builder(this).setTitle("SkillMajAuto")
+                    .setMessage(e.getMessage()).setPositiveButton("Fermer", null).show();
+            }
+            return;
+        }
+        if (offeredRelease != null) {
+            try {
+                skillMajAuto.download(offeredRelease);
+                updateStatus.setText("Téléchargement de " + offeredRelease.version + " lancé. Une notification sera affichée à la fin.");
+                updateAction.setText("SkillMajAuto · Vérifier le téléchargement");
+                offeredRelease = null;
+            } catch (Exception e) { updateStatus.setText("Téléchargement impossible : " + e.getMessage()); }
+            return;
+        }
+        if (skillMajAuto.hasPendingDownload() && !BuildConfig.DEBUG) {
+            updateStatus.setText("Téléchargement en cours ou APK incompatible. Vérifie les téléchargements Android.");
+            return;
+        }
+        updateAction.setEnabled(false);
+        updateStatus.setText("Recherche d'une Release officielle signée...");
+        updateExecutor.execute(() -> {
+            SkillMajAuto.Result check = skillMajAuto.check();
+            runOnUiThread(() -> {
+                if (isFinishing()) return;
+                offeredRelease = check.release;
+                if (updateStatus != null) updateStatus.setText(check.message);
+                if (updateAction != null) {
+                    updateAction.setEnabled(true);
+                    updateAction.setText(check.release != null ?
+                            "SkillMajAuto · Télécharger " + check.release.version :
+                            "SkillMajAuto · Vérifier les mises à jour");
+                }
+            });
+        });
+    }
+
     @Override protected void onResume() {
         super.onResume();
-        if (updater != null) updater.resumePendingInstall();
+        if (skillMajAuto != null && skillMajAuto.verifiedDownload() != null
+                && "com.chasmet.xdebt.UPDATE_READY".equals(getIntent().getAction())) {
+            new AlertDialog.Builder(this).setTitle("Mise à jour XDebt prête")
+                    .setMessage("APK officiel vérifié. Ouvre Paramètres → SkillMajAuto pour l'installer.")
+                    .setPositiveButton("Ouvrir les paramètres", (dialog, which) -> showSettings())
+                    .setNegativeButton("Plus tard", null).show();
+            getIntent().setAction(null);
+        }
     }
 
     @Override protected void onDestroy() {
-        if (updater != null) updater.destroy();
+        updateExecutor.shutdownNow();
         api.shutdown();
         super.onDestroy();
     }
