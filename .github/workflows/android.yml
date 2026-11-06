@@ -1,10 +1,17 @@
-name: XDebt Android - APK et AAB
+name: XDebt Android APK, AAB et mises à jour intégrées
+
 on:
   push:
     branches: [main]
   workflow_dispatch:
+
 permissions:
   contents: write
+
+concurrency:
+  group: xdebt-release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   android:
     runs-on: ubuntu-latest
@@ -14,50 +21,107 @@ jobs:
       XDEBT_KEY_ALIAS: ${{ secrets.XDEBT_KEY_ALIAS }}
       XDEBT_KEY_PASSWORD: ${{ secrets.XDEBT_KEY_PASSWORD }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: JDK 17
+        uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
-      - uses: android-actions/setup-android@v4
+
+      - name: Android SDK
+        uses: android-actions/setup-android@v4
         with:
           packages: 'platform-tools'
-      - name: Install SDK 34
+
+      - name: Platform API 34
         run: sdkmanager "platforms;android-34" "build-tools;34.0.0"
-      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Gradle 8.7
+        uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.7'
-      - name: Ensure canonical Gradle wrapper
+
+      - name: Wrapper
         run: |
-          gradle wrapper --gradle-version 8.7
           chmod +x gradlew
-      - name: Persist complete Gradle wrapper once
+          ./gradlew --version
+
+      - name: Calculate version
+        id: version
         run: |
-          if ! git ls-files --error-unmatch gradle/wrapper/gradle-wrapper.jar >/dev/null 2>&1; then
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git config user.name "github-actions[bot]"
-            git add gradlew gradlew.bat gradle/wrapper/gradle-wrapper.jar gradle/wrapper/gradle-wrapper.properties
-            git commit -m "build: check in canonical Gradle wrapper" || true
-            git push origin HEAD:main
-          fi
-      - name: Assemble debug APK
-        run: ./gradlew assembleDebug -PxdBuildCode=$((1000 + GITHUB_RUN_NUMBER)) -PxdBuildName=1.0.${GITHUB_RUN_NUMBER}
-      - name: Upload debug APK
+          echo "name=1.0.${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
+          echo "code=$((1000 + GITHUB_RUN_NUMBER))" >> "$GITHUB_OUTPUT"
+
+      - name: Build debug APK (test only)
+        run: |
+          ./gradlew --no-daemon assembleDebug \
+            -PxdBuildCode=${{ steps.version.outputs.code }} \
+            -PxdBuildName=${{ steps.version.outputs.name }}
+
+      - name: Upload debug artifact
         uses: actions/upload-artifact@v4
         with:
-          name: XDebt-debug-v1.0.${{ github.run_number }}
+          name: XDebt-debug-${{ steps.version.outputs.name }}
           path: app/build/outputs/apk/debug/app-debug.apk
-      - name: Configure long-term signing key
-        if: env.XDEBT_KEYSTORE_B64 != ''
+          if-no-files-found: error
+
+      - name: Check long-term signing configuration
+        id: signing
+        shell: bash
         run: |
-          echo "$XDEBT_KEYSTORE_B64" | base64 --decode > signing.jks
+          if [[ -n "$XDEBT_KEYSTORE_B64" && -n "$XDEBT_STORE_PASSWORD" &&
+                -n "$XDEBT_KEY_ALIAS" && -n "$XDEBT_KEY_PASSWORD" ]]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Signed release is disabled until all four XDEBT signing secrets are configured."
+          fi
+
+      - name: Restore private signing keystore
+        if: steps.signing.outputs.ready == 'true'
+        shell: bash
+        run: |
+          umask 077
+          printf '%s' "$XDEBT_KEYSTORE_B64" | base64 --decode > signing.jks
           echo "XDEBT_KEYSTORE_PATH=${GITHUB_WORKSPACE}/signing.jks" >> "$GITHUB_ENV"
-      - name: Assemble signed APK and Play Store AAB
-        if: env.XDEBT_KEYSTORE_B64 != ''
-        run: ./gradlew assembleRelease bundleRelease -PxdBuildCode=$((1000 + GITHUB_RUN_NUMBER)) -PxdBuildName=1.0.${GITHUB_RUN_NUMBER}
-      - name: Create signed GitHub Release
-        if: env.XDEBT_KEYSTORE_B64 != ''
+
+      - name: Build stable signed APK and Play AAB
+        if: steps.signing.outputs.ready == 'true'
+        run: |
+          ./gradlew --no-daemon assembleRelease bundleRelease \
+            -PxdBuildCode=${{ steps.version.outputs.code }} \
+            -PxdBuildName=${{ steps.version.outputs.name }}
+
+      - name: Verify output signatures and version
+        if: steps.signing.outputs.ready == 'true'
+        shell: bash
+        run: |
+          APK=app/build/outputs/apk/release/app-release.apk
+          test -s "$APK"
+          "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --verbose --print-certs "$APK"
+          test -s app/build/outputs/bundle/release/app-release.aab
+          mkdir -p release-assets
+          cp "$APK" "release-assets/XDebt-v${{ steps.version.outputs.name }}.apk"
+          cp app/build/outputs/bundle/release/app-release.aab \
+            "release-assets/XDebt-v${{ steps.version.outputs.name }}.aab"
+          cd release-assets
+          sha256sum "XDebt-v${{ steps.version.outputs.name }}.apk" > "XDebt-v${{ steps.version.outputs.name }}.apk.sha256"
+
+      - name: Publish signed GitHub Release for in-app updates
+        if: steps.signing.outputs.ready == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
+        shell: bash
         run: |
-          gh release create "v1.0.${GITHUB_RUN_NUMBER}"             app/build/outputs/apk/release/app-release.apk             app/build/outputs/bundle/release/app-release.aab             --title "XDebt v1.0.${GITHUB_RUN_NUMBER}"             --notes "Version de développement. Paiements désactivés."
+          gh release create "v${{ steps.version.outputs.name }}" \
+            "release-assets/XDebt-v${{ steps.version.outputs.name }}.apk" \
+            "release-assets/XDebt-v${{ steps.version.outputs.name }}.apk.sha256" \
+            "release-assets/XDebt-v${{ steps.version.outputs.name }}.aab" \
+            --title "XDebt v${{ steps.version.outputs.name }}" \
+            --notes "Mise à jour intégrée Android. Même clé de signature. Aucun paiement activé. Installez les versions Google Play depuis Google Play."
+
+      - name: Remove ephemeral keystore
+        if: always()
+        run: rm -f signing.jks
