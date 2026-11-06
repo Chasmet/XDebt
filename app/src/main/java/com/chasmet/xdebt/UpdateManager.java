@@ -118,6 +118,10 @@ public final class UpdateManager {
     }
 
     public void check(boolean manual) {
+        if (BuildConfig.DEBUG) {
+            if (manual) alert("Version de test", "Cet APK de test s'installe séparément pour préserver l'application existante. Les mises à jour automatiques fonctionneront sur la version officielle signée avec une clé permanente.");
+            return;
+        }
         if (checking || executor.isShutdown()) return;
         checking = true;
         executor.execute(() -> {

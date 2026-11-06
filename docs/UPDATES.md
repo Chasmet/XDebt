@@ -13,7 +13,7 @@
 - Les installations depuis Google Play recevront les mises à jour par Play Store.
 
 ## Point essentiel : signature permanente
-Le build GitHub Actions crée toujours l'APK debug pour les tests. Les builds debug GitHub Actions peuvent utiliser **des clés de debug différentes** d'une exécution à l'autre : ils NE sont PAS garantis compatibles en mise à jour, même avec le même nom de package.
+Le build GitHub Actions crée toujours l'APK debug pour les tests. Les versions debug utilisent désormais le package séparé `com.chasmet.xdebt.dev`, avec le libellé « XDebt (Test) » : elles peuvent être installées à côté de l'ancienne application, sans l'écraser. Les mises à jour automatiques ne sont pas proposées dans ce mode de test. Les builds debug GitHub Actions peuvent utiliser **des clés de debug différentes** d'une exécution à l'autre : ils NE sont PAS garantis compatibles en mise à jour, même avec le même nom de package.
 
 Les mises à jour fiables nécessitent une première installation depuis un APK **release signé par la clé permanente**, puis l'utilisation de **la même clé à chaque build**.
 
