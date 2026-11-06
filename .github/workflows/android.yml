@@ -56,9 +56,9 @@ jobs:
           echo "name=1.0.${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
           echo "code=$((1000 + GITHUB_RUN_NUMBER))" >> "$GITHUB_OUTPUT"
 
-      - name: Build debug APK (test only)
+      - name: Unit tests and build debug APK
         run: |
-          ./gradlew --no-daemon assembleDebug \
+          ./gradlew --no-daemon testDebugUnitTest assembleDebug \
             -PxdBuildCode=${{ steps.version.outputs.code }} \
             -PxdBuildName=${{ steps.version.outputs.name }}
 
