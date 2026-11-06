@@ -61,6 +61,10 @@ public class MainActivity extends Activity {
         root = findViewById(R.id.root_container);
         api = new ApiClient(this);
         updater = new UpdateManager(this);
+        if (android.os.Build.VERSION.SDK_INT >= 33 && !BuildConfig.DEBUG && updater.automaticChecksEnabled() &&
+                checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{android.Manifest.permission.POST_NOTIFICATIONS}, 851);
+        }
         if (updater.automaticChecksEnabled()) updater.check(false);
         if (api.base().isEmpty() || api.token().isEmpty()) showAuth();
         else showCommunity();
@@ -534,14 +538,15 @@ public class MainActivity extends Activity {
                 } else toast("Réponse serveur incorrecte.");
             });
         }), 13);
-        add(body, text("Version installée : " + BuildConfig.VERSION_NAME, 13, MUTED, false), 18);
+        add(body, text("SkillMajAuto · Version installée : " + BuildConfig.VERSION_NAME, 13, MUTED, false), 18);
         CheckBox autoUpdates = new CheckBox(this);
-        autoUpdates.setText("Vérifier automatiquement les mises à jour");
+        autoUpdates.setText("SkillMajAuto · Surveillance automatique des mises à jour");
         autoUpdates.setTextColor(TEXT);
         autoUpdates.setChecked(updater.automaticChecksEnabled());
         autoUpdates.setOnCheckedChangeListener((b, checked) -> updater.setAutomaticChecksEnabled(checked));
         add(body, autoUpdates, 9);
-        add(body, button("Vérifier et installer une mise à jour", false, v -> updater.check(true)), 9);
+        add(body, button("SkillMajAuto · Vérifier les mises à jour", false, v -> updater.check(true)), 9);
+        add(body, text("Recherche GitHub Releases et contrôle de signature. En version Test, les mises à jour automatiques sont désactivées.", 12, MUTED, false), 8);
         add(body, button("Retour", false, v -> {
             if (api.token().isEmpty()) showAuth(); else showCommunity();
         }), 9);
