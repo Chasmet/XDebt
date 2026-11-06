@@ -48,6 +48,7 @@ public class MainActivity extends Activity {
     private final NumberFormat euros = NumberFormat.getCurrencyInstance(Locale.FRANCE);
     private LinearLayout root, body;
     private ApiClient api;
+    private UpdateManager updater;
     private JSONObject profile;
     private boolean profileOwner;
     private int screenVersion = 0;
@@ -59,6 +60,8 @@ public class MainActivity extends Activity {
         getWindow().setNavigationBarColor(BLACK);
         root = findViewById(R.id.root_container);
         api = new ApiClient(this);
+        updater = new UpdateManager(this);
+        if (updater.automaticChecksEnabled()) updater.check(false);
         if (api.base().isEmpty() || api.token().isEmpty()) showAuth();
         else showCommunity();
     }
@@ -173,7 +176,18 @@ public class MainActivity extends Activity {
         Toast.makeText(this, message, Toast.LENGTH_LONG).show();
     }
     private void failure(String error) {
-        if (error != null) toast("XDebt : " + error);
+        if (error == null) return;
+        if (error.contains("(404)")) {
+            new AlertDialog.Builder(this)
+                .setTitle("Le serveur n'a pas encore activé XDebt")
+                .setMessage("L'adresse de ton serveur CHK Universal est enregistrée, mais le module XDebt répond 404. " +
+                    "Le serveur Windows doit charger la dernière version du dépôt CHK-serveur-Universal-Control. " +
+                    "Une mise à jour de l'APK seule ne peut pas activer ce module.")
+                .setPositiveButton("Compris", null)
+                .show();
+            return;
+        }
+        toast("XDebt : " + error);
     }
     private void showAuth() {
         page("Votre espace XDebt", false);
@@ -512,7 +526,22 @@ public class MainActivity extends Activity {
             catch (Exception e) { toast(e.getMessage()); }
         }), 12);
         add(body, text("L'application est gratuite. Aucun don ni paiement réel n'est activé.", 13, MUTED, false), 20);
-        add(body, button("Rechercher une mise à jour", false, v -> checkRelease()), 15);
+        add(body, button("Tester la connexion XDebt au serveur", false, v -> {
+            api.call("GET", "/health", null, (response, error) -> {
+                if (error != null) { failure(error); return; }
+                if (response != null && "XDebt".equals(response.optString("service"))) {
+                    toast("Serveur XDebt actif et accessible.");
+                } else toast("Réponse serveur incorrecte.");
+            });
+        }), 13);
+        add(body, text("Version installée : " + BuildConfig.VERSION_NAME, 13, MUTED, false), 18);
+        CheckBox autoUpdates = new CheckBox(this);
+        autoUpdates.setText("Vérifier automatiquement les mises à jour");
+        autoUpdates.setTextColor(TEXT);
+        autoUpdates.setChecked(updater.automaticChecksEnabled());
+        autoUpdates.setOnCheckedChangeListener((b, checked) -> updater.setAutomaticChecksEnabled(checked));
+        add(body, autoUpdates, 9);
+        add(body, button("Vérifier et installer une mise à jour", false, v -> updater.check(true)), 9);
         add(body, button("Retour", false, v -> {
             if (api.token().isEmpty()) showAuth(); else showCommunity();
         }), 9);
@@ -522,49 +551,13 @@ public class MainActivity extends Activity {
             });
         }), 9);
     }
-    private void checkRelease() {
-        new Thread(() -> {
-            HttpURLConnection c = null;
-            String found = "";
-            String url = "";
-            try {
-                c = (HttpURLConnection) new URL("https://api.github.com/repos/Chasmet/XDebt/releases/latest").openConnection();
-                c.setConnectTimeout(10000);
-                c.setReadTimeout(10000);
-                c.setRequestProperty("Accept", "application/vnd.github+json");
-                if (c.getResponseCode() != 200) throw new Exception("Aucune Release disponible.");
-                try (InputStream stream = c.getInputStream(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
-                    byte[] chunk = new byte[2048];
-                    int n;
-                    while ((n = stream.read(chunk)) > 0 && out.size() < 35000) out.write(chunk, 0, n);
-                    JSONObject json = new JSONObject(out.toString(StandardCharsets.UTF_8.name()));
-                    found = json.optString("tag_name", "");
-                    url = json.optString("html_url", "");
-                }
-            } catch (Exception e) { found = ""; }
-            finally { if (c != null) c.disconnect(); }
-            String latest = found;
-            String link = url;
-            runOnUiThread(() -> {
-                if (latest.isEmpty()) { toast("Aucune mise à jour publiée."); return; }
-                boolean newer = releaseNumber(latest) > releaseNumber(BuildConfig.VERSION_NAME);
-                new AlertDialog.Builder(this)
-                    .setTitle(newer ? "Mise à jour disponible : " + latest : "XDebt est à jour")
-                    .setMessage("Version installée : " + BuildConfig.VERSION_NAME +
-                        "\nVersion GitHub : " + latest +
-                        "\nPour les versions Google Play, les mises à jour passeront par Play Store.")
-                    .setNegativeButton("Fermer", null)
-                    .setPositiveButton("Voir la Release", (d, w) ->
-                        startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(link))))
-                    .show();
-            });
-        }).start();
+    @Override protected void onResume() {
+        super.onResume();
+        if (updater != null) updater.resumePendingInstall();
     }
-    private int releaseNumber(String version) {
-        try { String[] parts = version.replaceFirst("^v", "").split("\\."); return Integer.parseInt(parts[parts.length - 1]); }
-        catch (Exception e) { return -1; }
-    }
+
     @Override protected void onDestroy() {
+        if (updater != null) updater.destroy();
         api.shutdown();
         super.onDestroy();
     }
