@@ -11,6 +11,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -34,12 +35,28 @@ public final class ApiClient {
         return prefs.getString("auth_token", "");
     }
     public void setBase(String value) {
-        String url = value.trim().replaceAll("/+$", "");
-        if (!url.startsWith("https://") || url.length() < 12 || url.contains(" ") ||
-                url.contains("?") || url.contains("#")) {
-            throw new IllegalArgumentException("Une adresse HTTPS valide est obligatoire.");
+        try {
+            URI candidate = new URI(value.trim());
+            if (!"https".equalsIgnoreCase(candidate.getScheme()) ||
+                    candidate.getHost() == null ||
+                    candidate.getRawUserInfo() != null ||
+                    candidate.getRawQuery() != null ||
+                    candidate.getRawFragment() != null) {
+                throw new IllegalArgumentException("Saisis une adresse de serveur HTTPS valide.");
+            }
+            String path = candidate.getPath() == null ? "" :
+                    candidate.getPath().replaceAll("/+$", "");
+            // The MCP connector path is not the address of the XDebt service.
+            if (!(path.isEmpty() || path.equals("/mcp") ||
+                    path.equals("/xdebt/api") || path.equals("/xdebt/api/health"))) {
+                throw new IllegalArgumentException(
+                    "Indique uniquement l'adresse principale du serveur (sans chemin).");
+            }
+            String base = "https://" + candidate.getRawAuthority();
+            prefs.edit().putString("base_url", base).apply();
+        } catch (java.net.URISyntaxException error) {
+            throw new IllegalArgumentException("Adresse HTTPS du serveur invalide.");
         }
-        prefs.edit().putString("base_url", url).apply();
     }
     public void setToken(String token) {
         prefs.edit().putString("auth_token", token).apply();
