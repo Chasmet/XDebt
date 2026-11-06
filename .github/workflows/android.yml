@@ -3,6 +3,8 @@ name: XDebt Android APK, AAB et mises à jour intégrées
 on:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -68,6 +70,7 @@ jobs:
           if-no-files-found: error
 
       - name: Check long-term signing configuration
+        if: github.event_name != 'pull_request'
         id: signing
         shell: bash
         run: |
