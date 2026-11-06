@@ -24,6 +24,11 @@ android {
         }
     }
     buildTypes {
+        debug {
+            // A debug APK must never overwrite an existing signed XDebt install.
+            applicationIdSuffix '.dev'
+            versionNameSuffix '-test'
+        }
         release {
             minifyEnabled false
             if (System.getenv('XDEBT_KEYSTORE_PATH')) {
