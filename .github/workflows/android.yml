@@ -56,9 +56,9 @@ jobs:
           echo "name=1.0.${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
           echo "code=$((1000 + GITHUB_RUN_NUMBER))" >> "$GITHUB_OUTPUT"
 
-      - name: Build debug APK (test only)
+      - name: Unit tests and build debug APK
         run: |
-          ./gradlew --no-daemon assembleDebug \
+          ./gradlew --no-daemon testDebugUnitTest assembleDebug \
             -PxdBuildCode=${{ steps.version.outputs.code }} \
             -PxdBuildName=${{ steps.version.outputs.name }}
 
@@ -106,21 +106,21 @@ jobs:
           "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --verbose --print-certs "$APK"
           test -s app/build/outputs/bundle/release/app-release.aab
           mkdir -p release-assets
-          cp "$APK" "release-assets/XDebt-v${{ steps.version.outputs.name }}.apk"
+          cp "$APK" "release-assets/XDebt-${{ steps.version.outputs.name }}.apk"
           cp app/build/outputs/bundle/release/app-release.aab \
             "release-assets/XDebt-v${{ steps.version.outputs.name }}.aab"
           cd release-assets
-          sha256sum "XDebt-v${{ steps.version.outputs.name }}.apk" > "XDebt-v${{ steps.version.outputs.name }}.apk.sha256"
+          sha256sum "XDebt-${{ steps.version.outputs.name }}.apk" > "XDebt-${{ steps.version.outputs.name }}.apk.sha256"
 
-      - name: Publish signed GitHub Release for in-app updates
+      - name: Publish signed GitHub Release for SkillMajAuto
         if: steps.signing.outputs.ready == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           gh release create "v${{ steps.version.outputs.name }}" \
-            "release-assets/XDebt-v${{ steps.version.outputs.name }}.apk" \
-            "release-assets/XDebt-v${{ steps.version.outputs.name }}.apk.sha256" \
+            "release-assets/XDebt-${{ steps.version.outputs.name }}.apk" \
+            "release-assets/XDebt-${{ steps.version.outputs.name }}.apk.sha256" \
             "release-assets/XDebt-v${{ steps.version.outputs.name }}.aab" \
             --title "XDebt v${{ steps.version.outputs.name }}" \
             --notes "Mise à jour intégrée Android. Même clé de signature. Aucun paiement activé. Installez les versions Google Play depuis Google Play."
